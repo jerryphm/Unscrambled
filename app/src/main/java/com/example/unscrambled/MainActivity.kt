@@ -1,12 +1,11 @@
 package com.example.unscrambled
 
-import android.graphics.drawable.shapes.Shape
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -18,25 +17,27 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.text.selection.TextSelectionColors
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
-import androidx.compose.material3.TextFieldColors
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.unscrambled.ui.theme.Black
 import com.example.unscrambled.ui.theme.Blue
 import com.example.unscrambled.ui.theme.Gray
@@ -44,6 +45,10 @@ import com.example.unscrambled.ui.theme.Green
 import com.example.unscrambled.ui.theme.Pink
 import com.example.unscrambled.ui.theme.UnscrambledTheme
 import com.example.unscrambled.ui.theme.White
+import com.example.unscrambled.viewmodel.GameViewModel
+import com.example.unscrambled.viewmodel.MAX_WORD_PER_GAME
+import com.example.unscrambled.viewmodel.SCORE_INCREASED_EACH_TIME
+import com.example.unscrambled.viewmodel.TOTAL_SCORE
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -58,7 +63,9 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun GameScreen() {
+fun GameScreen(gameViewModel: GameViewModel = viewModel()) {
+    val gameUiState by gameViewModel.uiState.collectAsState()
+
     Scaffold(
         containerColor = Blue,
         modifier = Modifier
@@ -69,17 +76,77 @@ fun GameScreen() {
                 .padding(innerPadding)
                 .padding(horizontal = 24.dp)
         ) {
-            Spacer(Modifier.height(8.dp))
-            GameStatus()
-            CurrentScrambledWord()
-            UserGuess()
-            CheckOrSkipButton()
+            if (gameUiState.isOver) {
+                GameOver(score = gameUiState.score, replay = { gameViewModel.replay() })
+            } else {
+                Spacer(Modifier.height(8.dp))
+                GameStatus(
+                    score = gameUiState.score,
+                    wordCount = gameUiState.wordCount
+                )
+                CurrentScrambledWord(
+                    scrambledWord = gameUiState.scrambledWord,
+                    wordDefinition = gameUiState.wordDefinition
+                )
+                UserGuess(
+                    isError = gameUiState.isError,
+                    userGuess = gameViewModel.userGuess.value,
+                    updateUserGuess = {str -> gameViewModel.updateUserGuess(str)}
+                )
+                CheckOrSkipButton(
+                    check = { gameViewModel.check() },
+                    skip = { gameViewModel.skip() }
+                )
+            }
+
         }
     }
 }
 
 @Composable
-fun GameStatus(modifier: Modifier = Modifier) {
+fun GameOver(
+    score: Int,
+    replay: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+        modifier = modifier.fillMaxSize()
+    ) {
+        val msg = when {
+            score <= TOTAL_SCORE / 3 -> "Keep trying! You can do better. Your score: "
+            score > TOTAL_SCORE / 3 && score <= TOTAL_SCORE / 3 * 2 -> "Good job! You're almost there. Your score: "
+            else -> "Excellent work! You nailed it. Your score: "
+        }
+        Text(
+            buildAnnotatedString {
+                append(msg)
+                withStyle(style = SpanStyle(color = Color(0xFFF0AA89))) {
+                    append(score.toString())
+                }
+            },
+            style = MaterialTheme.typography.headlineLarge,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth()
+        )
+        Spacer(Modifier.height(32.dp))
+        Button(
+            onClick = replay,
+            shape = CircleShape,
+            colors = ButtonDefaults.buttonColors(
+                containerColor = Pink,
+                contentColor = Black
+            ),
+            contentPadding = PaddingValues(horizontal = 64.dp, vertical = 12.dp),
+        ) {
+            Text("Replay", style = MaterialTheme.typography.titleMedium)
+        }
+    }
+}
+
+@Composable
+fun GameStatus(score: Int, wordCount: Int, modifier: Modifier = Modifier) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -90,27 +157,31 @@ fun GameStatus(modifier: Modifier = Modifier) {
         ) {
             Image(painter = painterResource(R.drawable.coin), contentDescription = "score")
             Spacer(Modifier.width(4.dp))
-            Text("120", style = MaterialTheme.typography.displaySmall)
+            Text(score.toString(), style = MaterialTheme.typography.displaySmall)
         }
-        Text("3/10", style = MaterialTheme.typography.titleMedium)
+        Text("$wordCount/$MAX_WORD_PER_GAME", style = MaterialTheme.typography.titleMedium)
     }
 }
 
 @Composable
-fun CurrentScrambledWord(modifier: Modifier = Modifier) {
+fun CurrentScrambledWord(
+    scrambledWord: String,
+    wordDefinition: String,
+    modifier: Modifier = Modifier
+) {
     Column(
         modifier = modifier.fillMaxWidth()
     ) {
         Spacer(Modifier.height(140.dp))
         Text(
-            "Serup",
+            scrambledWord,
             style = MaterialTheme.typography.headlineLarge,
             textAlign = TextAlign.Center,
             modifier = Modifier.fillMaxWidth()
         )
         Spacer(Modifier.height(4.dp))
         Text(
-            "very good or pleasant, excellent.very good or pleasant, excellent.very good or pleasant, excellent.very good or pleasant, excellent.",
+            wordDefinition,
             style = MaterialTheme.typography.titleMedium,
             textAlign = TextAlign.Center,
             modifier = Modifier.fillMaxWidth(),
@@ -120,11 +191,16 @@ fun CurrentScrambledWord(modifier: Modifier = Modifier) {
 }
 
 @Composable
-fun UserGuess(modifier: Modifier = Modifier) {
+fun UserGuess(
+    isError: Boolean,
+    userGuess: String,
+    updateUserGuess: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
     Spacer(Modifier.height(54.dp))
     TextField(
-        value = "",
-        onValueChange = {},
+        value = userGuess,
+        onValueChange = updateUserGuess,
         placeholder = { Text("Type your answer...", style = MaterialTheme.typography.titleMedium, color = Gray) },
         singleLine = true,
         shape = CircleShape,
@@ -134,14 +210,25 @@ fun UserGuess(modifier: Modifier = Modifier) {
             focusedIndicatorColor = Color.Transparent,
             unfocusedIndicatorColor = Color.Transparent,
             disabledIndicatorColor = Color.Transparent,
+            errorIndicatorColor = Color.Transparent,
+            errorContainerColor = White,
+            errorCursorColor = Black,
+            cursorColor = Black
         ),
         textStyle = MaterialTheme.typography.titleMedium,
-        modifier = Modifier.fillMaxWidth()
+        isError = isError,
+        modifier = modifier
+            .fillMaxWidth()
+            .border(width = 1.dp, color = if (isError) Color.Red else Color.Transparent, shape = CircleShape)
     )
 }
 
 @Composable
-fun CheckOrSkipButton(modifier: Modifier = Modifier) {
+fun CheckOrSkipButton(
+    check: () -> Unit,
+    skip: () -> Unit,
+    modifier: Modifier = Modifier
+) {
     Spacer(Modifier.height(32.dp))
     Row(
         horizontalArrangement = Arrangement.Center,
@@ -149,7 +236,7 @@ fun CheckOrSkipButton(modifier: Modifier = Modifier) {
         modifier = modifier.fillMaxWidth()
     ) {
         Button(
-            onClick = {},
+            onClick = skip,
             shape = CircleShape,
             colors = ButtonDefaults.buttonColors(
                 containerColor = Green,
@@ -161,7 +248,7 @@ fun CheckOrSkipButton(modifier: Modifier = Modifier) {
         }
         Spacer(Modifier.width(12.dp))
         Button(
-            onClick = {},
+            onClick = check,
             shape = CircleShape,
             colors = ButtonDefaults.buttonColors(
                 containerColor = Pink,
